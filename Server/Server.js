@@ -19,14 +19,15 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {   cors: {     origin: [       "http://localhost:5173",       "https://mediscope-frontend-lxwd.onrender.com",     ],     methods: ["GET", "POST"],   }, });
 
 // -----------------------------
 // CORS + JSON PARSER
 // -----------------------------
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173", ],
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173","https://mediscope-frontend-lxwd.onrender.com
+" ],
     credentials: true,
   })
 );
@@ -387,7 +388,7 @@ app.post("/interpret", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Interpreter service failed" });
   }
 });
-
+// -- check--//
 app.get("/", (req, res) => {
   res.json({ status: "Mediscope backend running 🚀" });
 });
