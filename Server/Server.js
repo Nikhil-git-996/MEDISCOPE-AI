@@ -26,7 +26,7 @@ const io = new Server(server, { cors: { origin: "*" } });
 // -----------------------------
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173", ],
     credentials: true,
   })
 );
@@ -388,30 +388,9 @@ app.post("/interpret", authMiddleware, async (req, res) => {
   }
 });
 
-// -----------------------------
-// STATIC FILE SERVING (PRODUCTION)
-// -----------------------------
-// Serve static assets if in production
-if (process.env.NODE_ENV === 'production' || true) { // Always serving for now to make it easy
-  const clientBuildPath = path.join(__dirname, '../Client/dist');
-  console.log("📂 Serving static files from:", clientBuildPath);
-
-  app.use(express.static(clientBuildPath));
-
-  app.get('*', (req, res) => {
-    // Exclude API routes from catching *
-    if (req.path.startsWith('/api') || req.path.startsWith('/signup') || req.path.startsWith('/login') || req.path.startsWith('/process') || req.path.startsWith('/history') || req.path.startsWith('/interpret')) {
-        return res.status(404).json({ error: "API route not found" });
-    }
-    const indexPath = path.resolve(clientBuildPath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      res.sendFile(indexPath);
-    } else {
-        console.warn("⚠️ index.html not found at:", indexPath);
-        res.status(404).send("Client build not found. Please run 'npm run build' in Client directory.");
-    }
-  });
-}
+app.get("/", (req, res) => {
+  res.json({ status: "Mediscope backend running 🚀" });
+});
 
 // -----------------------------
 // START SERVER
