@@ -26,8 +26,7 @@ const io = new Server(server, {   cors: {     origin: [       "http://localhost:
 // -----------------------------
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173","https://mediscope-frontend-lxwd.onrender.com
-" ],
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173","https://mediscope-frontend-lxwd.onrender.com" ],
     credentials: true,
   })
 );
