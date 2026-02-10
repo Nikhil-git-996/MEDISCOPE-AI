@@ -130,6 +130,10 @@ def predict():
         logger.error(f"❌ Prediction error: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/", methods=["GET"])
+def health_check():
+    return "Xray Microservice is running", 200
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=os.environ.get("FLASK_DEBUG", "False") == "True")
