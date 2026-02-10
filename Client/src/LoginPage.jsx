@@ -43,7 +43,15 @@ const LoginPage = () => {
         }),
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type");
+      let data;
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        console.error("Non-JSON response:", text);
+        throw new Error("Server returned non-JSON response: " + (text.substring(0, 100) || "Empty response"));
+      }
 
       if (!res.ok) {
         console.error("Login failed:", data);
