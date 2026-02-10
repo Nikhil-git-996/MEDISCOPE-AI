@@ -5,6 +5,14 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
+      '/signup': {
+        target: 'https://mediscope-2-server.onrender.com',
+        changeOrigin: true,
+      },
+      '/login': {
+        target: 'https://mediscope-2-server.onrender.com',
+        changeOrigin: true,
+      },
       '/process': {
         target: 'https://mediscope-2-server.onrender.com',
         changeOrigin: true,
