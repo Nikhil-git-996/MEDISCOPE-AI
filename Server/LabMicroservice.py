@@ -15,7 +15,17 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 logging.basicConfig(level=logging.INFO)
-ocr_reader = easyocr.Reader(['en'])
+
+# Lazy load EasyOCR
+ocr_reader = None
+
+def get_ocr_reader():
+    global ocr_reader
+    if ocr_reader is None:
+        logging.info("⏳ Loading EasyOCR model... (might take a moment)")
+        ocr_reader = easyocr.Reader(['en'])
+        logging.info("✅ EasyOCR model loaded.")
+    return ocr_reader
 
 # Load API Key from Environment
 from dotenv import load_dotenv
@@ -31,7 +41,8 @@ def extract_text(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     text = ""
     if ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']:
-        res = ocr_reader.readtext(file_path, detail=0)
+        reader = get_ocr_reader()
+        res = reader.readtext(file_path, detail=0)
         text = "\n".join(res) if res else "[No text]"
     else:  # PDF
         with fitz.open(file_path) as doc:
@@ -137,5 +148,10 @@ def parse():
         "summary": summary
     })
 
+@app.route('/')
+def health_check():
+    return "Lab Microservice is running", 200
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host="0.0.0.0", port=port, debug=os.environ.get("FLASK_DEBUG", "False") == "True")
