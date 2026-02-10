@@ -251,6 +251,9 @@ app.post(
 
         const response = await axios.post(`${XRAY_URL}/predict`, payload, {
           headers: { "Content-Type": "application/json" },
+          maxBodyLength: Infinity, // Critical for Base64 images
+          maxContentLength: Infinity,
+          timeout: 60000 // 60s timeout
         });
 
         microResponse = response.data;
