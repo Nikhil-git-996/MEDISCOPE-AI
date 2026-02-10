@@ -109,9 +109,12 @@ def summarize_with_gemini(text):
 # ----------------- Route -----------------
 @app.route('/parse', methods=['POST'])
 def parse():
-    # 🔹 Case 1: Node sends file path
+    logging.info("📝 /parse called")
+
+    # 🔹 Case 1: Node sends file path (Deprecated/Local only)
     if 'file_path' in request.form:
         file_path = request.form['file_path']
+        logging.info(f"📂 Received file_path: {file_path}")
         if not os.path.exists(file_path):
             return jsonify({"error": f"File not found: {file_path}"}), 400
         text = extract_text(file_path)
@@ -122,23 +125,31 @@ def parse():
             "summary": summary
         })
 
-    # 🔹 Case 2: Client directly uploads files
+    # 🔹 Case 2: Client directly uploads files (Preferred for Microservices)
     if 'files' not in request.files:
+        logging.error("❌ No files provided in request")
         return jsonify({"error": "No files or file_path provided"}), 400
 
     files = request.files.getlist('files')
+    logging.info(f"📥 Received {len(files)} files via upload")
+
     combined_text = ""
     diagnostics = {}
 
     for f in files:
         filename = secure_filename(f.filename)
         path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        logging.info(f"💾 Saving file to: {path}")
         f.save(path)
         try:
             txt = extract_text(path)
             combined_text += f"\n=== {filename} ===\n{txt}\n"
             diagnostics[filename] = {"status": "success", "text_length": len(txt)}
+            # Cleanup
+            if os.path.exists(path):
+                os.remove(path)
         except Exception as e:
+            logging.error(f"❌ Error processing {filename}: {e}")
             diagnostics[filename] = {"status": "failed", "error": str(e)}
 
     summary = summarize_with_gemini(combined_text)
