@@ -122,7 +122,7 @@ const upload = multer({ storage });
 async function safePost(url, data, headers = {}) {
   try {
     console.log(`🌐 Making POST request to: ${url}`);
-    const res = await axios.post(url, data, { headers, timeout: 60000 });
+    const res = await axios.post(url, data, { headers, timeout: 180000 });
     console.log(`✅ Response received from ${url}`);
     return res.data;
   } catch (err) {
@@ -253,7 +253,7 @@ app.post(
           headers: { "Content-Type": "application/json" },
           maxBodyLength: Infinity, // Critical for Base64 images
           maxContentLength: Infinity,
-          timeout: 60000 // 60s timeout
+          timeout: 180000 // 60s timeout
         });
 
         microResponse = response.data;
