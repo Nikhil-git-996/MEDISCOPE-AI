@@ -6,11 +6,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/process': {
-        target: 'http://localhost:4000',
+        target: 'https://mediscope-2-server.onrender.com',
         changeOrigin: true,
       },
       '/api': {
-        target: 'http://localhost:4000',
+        target: 'https://mediscope-2-server.onrender.com',
         changeOrigin: true,
       },
     },
