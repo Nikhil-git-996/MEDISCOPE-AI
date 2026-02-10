@@ -269,12 +269,19 @@ app.post(
 
         try {
           // Using multipart/form-data for reliability
+          // Using multipart/form-data for reliability
           const formData = new FormData();
-          formData.append("file_path", req.file.path);
+          // Send key "files" to match LabMicroservice's "Case 2" logic
+          formData.append("files", fs.createReadStream(req.file.path));
 
-          console.log("📤 [LAB] Sending file path to microservice...");
+          console.log("📤 [LAB] Streaming file to microservice...");
           const labResponse = await axios.post(`${LAB_URL}/parse`, formData, {
-            headers: formData.getHeaders(),
+            headers: {
+              ...formData.getHeaders(),
+              // Ensure content-length is set if possible, though axios/form-data usually handles it
+            },
+            maxBodyLength: Infinity, // Allow large files
+            maxContentLength: Infinity
           });
 
           microResponse = labResponse.data;
