@@ -189,6 +189,9 @@ app.post("/login", async (req, res) => {
 // -----------------------------
 // PROCESS UPLOAD & PREDICTION
 // -----------------------------
+// -----------------------------
+// PROCESS UPLOAD & PREDICTION
+// -----------------------------
 app.post(
   "/process",
   authMiddleware,
@@ -196,9 +199,6 @@ app.post(
   async (req, res) => {
     console.log("🔥 [PROCESS] Endpoint hit!");
     console.log("👤 Authenticated user:", req.user);
-    console.log("📥 Headers:", req.headers);
-    console.log("📥 Body:", req.body);
-    console.log("📎 Uploaded file info:", req.file);
 
     if (!req.file) {
       console.log("❌ No file uploaded");
@@ -214,152 +214,157 @@ app.post(
     const requestId = `REQ-${Date.now()}`;
     const userId = req.user.id;
 
-    console.log(`🟢 Processing request ${requestId} for user ${userId}`);
-    io.emit("status", { userId, requestId, step: "started" });
+    console.log(`🟢 Starting request ${requestId} for user ${userId}`);
 
-    try {
-      let microResponse = null;
+    // Respond immediately to prevent timeout on Render free tier
+    res.status(202).json({
+      success: true,
+      requestId,
+      message: "Processing started. Please wait for results via socket.",
+    });
 
-      // ======================================
-      // 🧠 X-RAY HANDLER
-      // ======================================
-      if (type === "xray") {
-        console.log("🧠 [X-RAY] Preparing to call microservice...");
+    // Continue processing in background
+    (async () => {
+      try {
+        io.emit("status", { userId, requestId, step: "started" });
+        let microResponse = null;
 
-        const filePath = req.file.path;
-        console.log("📂 Reading file from:", filePath);
+        // ======================================
+        // 🧠 X-RAY HANDLER
+        // ======================================
+        if (type === "xray") {
+          console.log("🧠 [X-RAY] Preparing to call microservice...");
 
-        const fileBuffer = fs.readFileSync(filePath);
-        const base64Image = fileBuffer.toString("base64");
-        console.log(
-          "🖼️ Converted image to Base64 (first 50 chars):",
-          base64Image.slice(0, 50) + "..."
-        );
+          const filePath = req.file.path;
+          console.log("📂 Reading file from:", filePath);
 
-        const payload = {
-          payload: {
-            image_base64: base64Image,
-            body_part: "X-ray",
-            age: 30,
-            weight: 70,
-            symptoms: "unknown",
-          },
-        };
+          const fileBuffer = fs.readFileSync(filePath);
+          const base64Image = fileBuffer.toString("base64");
 
-        const XRAY_URL = process.env.XRAY_URL?.replace(/\/$/, "") || "";
-        console.log("🌐 Calling X-ray microservice at:", `${XRAY_URL}/predict`);
+          const payload = {
+            payload: {
+              image_base64: base64Image,
+              body_part: "X-ray",
+              age: 30,
+              weight: 70,
+              symptoms: "unknown",
+            },
+          };
 
-        const response = await axios.post(`${XRAY_URL}/predict`, payload, {
-          headers: { "Content-Type": "application/json" },
-          maxBodyLength: Infinity, // Critical for Base64 images
-          maxContentLength: Infinity,
-          timeout: 180000 // 60s timeout
-        });
+          const XRAY_URL = process.env.XRAY_URL?.replace(/\/$/, "") || "";
+          console.log("🌐 Calling X-ray microservice at:", `${XRAY_URL}/predict`);
 
-        microResponse = response.data;
-        console.log("✅ [X-RAY] Microservice Response:", microResponse);
-      }
+          const response = await axios.post(`${XRAY_URL}/predict`, payload, {
+            headers: { "Content-Type": "application/json" },
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+            timeout: 180000
+          });
 
-      // ======================================
-      // 🧪 LAB REPORT HANDLER
-      // ======================================
-      else if (type === "labreport" || type === "lab") {
-        console.log("🧪 [LAB] Preparing to call Lab microservice...");
+          microResponse = response.data;
+          console.log("✅ [X-RAY] Microservice Response:", microResponse);
+        }
 
-        const LAB_URL = process.env.LAB_URL?.replace(/\/$/, "") || "";
-        console.log("🌍 Target URL:", `${LAB_URL}/parse`);
-        console.log("📄 Sending file path:", req.file.path);
+        // ======================================
+        // 🧪 LAB REPORT HANDLER
+        // ======================================
+        else if (type === "labreport" || type === "lab") {
+          console.log("🧪 [LAB] Preparing to call Lab microservice...");
 
-        try {
-          // Using multipart/form-data for reliability
-          // Using multipart/form-data for reliability
+          const LAB_URL = process.env.LAB_URL?.replace(/\/$/, "") || "";
+          console.log("🌍 Target URL:", `${LAB_URL}/parse`);
+
           const formData = new FormData();
-          // Send key "files" to match LabMicroservice's "Case 2" logic
           formData.append("files", fs.createReadStream(req.file.path));
 
           console.log("📤 [LAB] Streaming file to microservice...");
           const labResponse = await axios.post(`${LAB_URL}/parse`, formData, {
             headers: {
               ...formData.getHeaders(),
-              // Ensure content-length is set if possible, though axios/form-data usually handles it
             },
-            maxBodyLength: Infinity, // Allow large files
+            maxBodyLength: Infinity,
             maxContentLength: Infinity
           });
 
           microResponse = labResponse.data;
           console.log("✅ [LAB] Microservice Response:", microResponse);
-        } catch (err) {
-          console.error("❌ [LAB] Microservice Error:", err.message);
-          return res
-            .status(500)
-            .json({ error: "Lab microservice failed", details: err.message });
         }
+
+        // ======================================
+        // 🎯 EMIT MICROSERVICE RESULT
+        // ======================================
+        io.emit("status", {
+          userId,
+          requestId,
+          step: "microservice_complete",
+          data: microResponse,
+        });
+
+        // ======================================
+        // 🧠 INTERPRETER CALL
+        // ======================================
+        console.log("🧠 [INTERPRETER] Sending data for interpretation...");
+        const INTERPRETER_URL =
+          process.env.INTERPRETER_URL?.replace(/\/$/, "") || "";
+
+        const formData2 = new FormData();
+        formData2.append("username", req.user.name || "User");
+        formData2.append("language", language || "english");
+        formData2.append("predictions", JSON.stringify(microResponse));
+
+        const interpreted = await safePost(
+          `${INTERPRETER_URL}/interpret`,
+          formData2,
+          formData2.getHeaders()
+        );
+
+        console.log("✅ [INTERPRETER] Response:", interpreted);
+
+        // ======================================
+        // 💾 SAVE HISTORY
+        // ======================================
+        await History.create({
+          userId,
+          requestId,
+          type,
+          fileName: req.file.filename,
+          rawOutput: microResponse,
+          interpretedOutput: interpreted,
+          status: "completed",
+        });
+
+        console.log("💾 History saved successfully!");
+
+        // Final success emission
+        io.emit("completed", { userId, requestId, interpreted });
+
+      } catch (err) {
+        console.error("❌ [PROCESS ERROR]:", err.message);
+        io.emit("failed", { userId, requestId, error: err.message });
+
+        // Create failed history record if possible
+         try {
+             await History.create({
+                userId,
+                requestId,
+                type,
+                fileName: req.file.filename,
+                status: "failed",
+                error: err.message
+             });
+         } catch(e) { console.error("Could not save failed history", e); }
+
+      } finally {
+        // ======================================
+        // 🧹 CLEANUP
+        // ======================================
+        if (req.file && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+          console.log("🗑️ Cleaned up uploaded file:", req.file.path);
+        }
+        console.log(`🏁 [PROCESS] Background task finished for ${requestId}`);
       }
-
-      // ======================================
-      // 🎯 EMIT MICROSERVICE RESULT
-      // ======================================
-      io.emit("status", {
-        userId,
-        requestId,
-        step: "microservice_complete",
-        data: microResponse,
-      });
-
-      // ======================================
-      // 🧠 INTERPRETER CALL
-      // ======================================
-      console.log("🧠 [INTERPRETER] Sending data for interpretation...");
-      const INTERPRETER_URL =
-        process.env.INTERPRETER_URL?.replace(/\/$/, "") || "";
-
-      const formData2 = new FormData();
-      formData2.append("username", req.user.name || "User");
-      formData2.append("language", language || "english");
-      formData2.append("predictions", JSON.stringify(microResponse));
-
-      const interpreted = await safePost(
-        `${INTERPRETER_URL}/interpret`,
-        formData2,
-        formData2.getHeaders()
-      );
-
-      console.log("✅ [INTERPRETER] Response:", interpreted);
-
-      // ======================================
-      // 💾 SAVE HISTORY
-      // ======================================
-      await History.create({
-        userId,
-        requestId,
-        type,
-        fileName: req.file.filename,
-        rawOutput: microResponse,
-        interpretedOutput: interpreted,
-        status: "completed",
-      });
-
-      console.log("💾 History saved successfully!");
-      io.emit("completed", { userId, requestId, interpreted });
-
-      res.json({ success: true, requestId, interpreted });
-    } catch (err) {
-      console.error("❌ [PROCESS ERROR]:", err.message);
-      io.emit("failed", { userId, requestId, error: err.message });
-      res
-        .status(500)
-        .json({ error: "Processing failed", message: err.message });
-    } finally {
-      // ======================================
-      // 🧹 CLEANUP
-      // ======================================
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-        console.log("🗑️ Cleaned up uploaded file:", req.file.path);
-      }
-      console.log("🏁 [PROCESS] Completed request lifecycle.");
-    }
+    })();
   }
 );
 

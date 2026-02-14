@@ -381,7 +381,12 @@ const AIChatInterface = () => {
       formData.append("type", normalizedType);
       formData.append("language", "english");
 
-      const { getApiUrl } = await import('./config');
+      const { getApiUrl, SOCKET_URL } = await import("./config");
+      const { io } = await import("socket.io-client");
+
+      // Initialize socket connection
+      const socket = io(SOCKET_URL);
+
       const response = await fetch(getApiUrl("/process"), {
         method: "POST",
         headers: {
@@ -396,6 +401,43 @@ const AIChatInterface = () => {
         throw new Error(result?.error || "Backend returned an error");
       }
 
+      // If accepted for background processing
+      if (response.status === 202 && result.requestId) {
+        console.log("Listen waiting for requestId:", result.requestId);
+
+        // Listen for completion or failure
+        socket.on("completed", (data) => {
+          if (data.requestId === result.requestId) {
+            handleAnalysisComplete(data.interpreted, type, uploadMessage);
+            socket.disconnect();
+          }
+        });
+
+        socket.on("failed", (data) => {
+           if (data.requestId === result.requestId) {
+             handleAnalysisError(data.error || "Processing failed");
+             socket.disconnect();
+           }
+        });
+
+        // Fallback timeout in client (e.g. 5 mins) just in case socket fails
+        setTimeout(() => {
+            if(socket.connected) socket.disconnect();
+        }, 300000);
+
+      } else if (result.interpreted) {
+          // Fallback if server returns immediately (legacy behavior)
+          handleAnalysisComplete(result.interpreted, type, uploadMessage);
+      } else {
+        throw new Error("Invalid response from server");
+      }
+
+    } catch (err) {
+      handleAnalysisError(err.message);
+    }
+  };
+
+  const handleAnalysisComplete = (interpretedData, type, uploadMessage) => {
       // Format the response
       const formatResponse = (text) => {
         if (typeof text !== "string") {
@@ -421,7 +463,7 @@ const AIChatInterface = () => {
       const aiResponse = {
         id: Date.now() + 1,
         text: formatResponse(
-          result.interpreted?.message || result.interpreted || result
+          interpretedData?.message || interpretedData || "Analysis complete."
         ),
         sender: "ai",
         timestamp: new Date(),
@@ -429,6 +471,8 @@ const AIChatInterface = () => {
       };
 
       setMessages((prev) => [...prev, aiResponse]);
+      setIsTyping(false);
+      setIsDeepThinking(false);
 
       // Update conversation with file upload
       setConversations((prev) =>
@@ -444,22 +488,23 @@ const AIChatInterface = () => {
             : conv
         )
       );
-    } catch (err) {
-      console.error("Upload error:", err);
+  };
+
+  const handleAnalysisError = (errorMessage) => {
+      console.error("Upload/Analysis error:", errorMessage);
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now() + 1,
-          text: `❌ Upload failed: ${err.message}`,
+          text: `❌ Analysis failed: ${errorMessage}`,
           sender: "ai",
           timestamp: new Date(),
         },
       ]);
-    } finally {
       setIsTyping(false);
       setIsDeepThinking(false);
-    }
   };
+
 
   // Handle file selection from UI
   const handleFileSelect = (type) => {
