@@ -60,12 +60,95 @@ const AIChatInterface = () => {
   ]);
   const [showAuthWarning, setShowAuthWarning] = useState(false);
   const [userDetails, setUserDetails] = useState(null);
+  const [socket, setSocket] = useState(null);
+  const [socketConnected, setSocketConnected] = useState(false);
 
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const deepThinkingTimeoutRef = useRef(null);
   const authWarningTimeoutRef = useRef(null);
+
+  // Pending requests reference to track which file upload belongs to which request
+  // Maps requestId -> { type, uploadMessage, conversationId }
+  const pendingRequestsRef = useRef({});
+
+  // Refs for handlers to ensure socket listeners always use the latest closure
+  const handlersRef = useRef({});
+
+  // Update handlers ref on every render
+  useEffect(() => {
+    handlersRef.current = {
+      handleAnalysisComplete,
+      handleAnalysisError,
+      activeConversation
+    };
+  });
+
+  // Initialize Socket.IO connection
+  useEffect(() => {
+    let newSocket = null;
+
+    const initSocket = async () => {
+      const { SOCKET_URL } = await import("./config");
+      const { io } = await import("socket.io-client");
+
+      console.log("🔌 Connecting to socket at:", SOCKET_URL);
+      newSocket = io(SOCKET_URL, {
+        transports: ["websocket", "polling"],
+        withCredentials: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+      });
+
+      newSocket.on("connect", () => {
+        console.log("✅ Socket connected:", newSocket.id);
+        setSocketConnected(true);
+      });
+
+      newSocket.on("connect_error", (err) => {
+        console.error("❌ Socket error:", err);
+        setSocketConnected(false);
+      });
+
+      newSocket.on("disconnect", () => {
+        console.log("❌ Socket disconnected");
+        setSocketConnected(false);
+      });
+
+      newSocket.on("completed", (data) => {
+        console.log("✅ Analysis completed event:", data);
+        const requestInfo = pendingRequestsRef.current[data.requestId];
+
+        if (requestInfo && handlersRef.current.handleAnalysisComplete) {
+           handlersRef.current.handleAnalysisComplete(
+               data.interpreted,
+               requestInfo.type,
+               requestInfo.uploadMessage,
+               requestInfo.conversationId // Use stored conversationId
+           );
+           delete pendingRequestsRef.current[data.requestId];
+        }
+      });
+
+      newSocket.on("failed", (data) => {
+        console.error("❌ Analysis failed event:", data);
+        const requestInfo = pendingRequestsRef.current[data.requestId];
+        if (requestInfo && handlersRef.current.handleAnalysisError) {
+           handlersRef.current.handleAnalysisError(data.error || "Processing failed");
+           delete pendingRequestsRef.current[data.requestId];
+        }
+      });
+
+      setSocket(newSocket);
+    };
+
+    initSocket();
+
+    return () => {
+      if (newSocket) newSocket.disconnect();
+    };
+  }, []); // Run once on mount
 
   // Check authentication and fetch user details
   useEffect(() => {
@@ -437,7 +520,10 @@ const AIChatInterface = () => {
     }
   };
 
-  const handleAnalysisComplete = (interpretedData, type, uploadMessage) => {
+  const handleAnalysisComplete = (interpretedData, type, uploadMessage, targetConversationId) => {
+      // If no target conversation ID provided, use active
+      const conversationId = targetConversationId || activeConversation;
+
       // Format the response
       const formatResponse = (text) => {
         if (typeof text !== "string") {
@@ -470,14 +556,21 @@ const AIChatInterface = () => {
         isAnalysis: true,
       };
 
-      setMessages((prev) => [...prev, aiResponse]);
+      setMessages((prev) => {
+          // Only update messages if we are viewing the target conversation
+          if (conversationId === activeConversation) {
+             return [...prev, aiResponse];
+          }
+          return prev;
+      });
+
       setIsTyping(false);
       setIsDeepThinking(false);
 
       // Update conversation with file upload
       setConversations((prev) =>
         prev.map((conv) =>
-          conv.id === activeConversation
+          conv.id === conversationId
             ? {
                 ...conv,
                 messages: [...conv.messages, uploadMessage, aiResponse],

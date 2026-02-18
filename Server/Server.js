@@ -216,12 +216,17 @@ app.post(
 
     console.log(`🟢 Starting request ${requestId} for user ${userId}`);
 
-    // Respond immediately to prevent timeout on Render free tier
-    res.status(202).json({
-      success: true,
-      requestId,
-      message: "Processing started. Please wait for results via socket.",
-    });
+    try {
+        // Respond immediately to prevent timeout on Render free tier
+        res.status(202).json({
+          success: true,
+          requestId,
+          message: "Processing started. Please wait for results via socket.",
+        });
+    } catch (err) {
+        console.error("❌ Error sending 202 response:", err);
+        return res.status(500).json({ error: "Failed to initiate processing" });
+    }
 
     // Continue processing in background
     (async () => {
