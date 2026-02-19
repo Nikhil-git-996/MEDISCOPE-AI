@@ -89,6 +89,10 @@ model = load_mediscope_model()
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
+        # 1. GC Collect at start
+        import gc
+        gc.collect()
+
         data = request.get_json()
         if not data or "payload" not in data:
             return jsonify({"error": "Invalid request format. Expected JSON with 'payload' key."}), 400
@@ -97,27 +101,48 @@ def predict():
         if "image_base64" not in payload:
              return jsonify({"error": "Missing 'image_base64' in payload."}), 400
 
+        logger.info(f"📥 Received payload. Processing...")
+
         # Decode base64 image
         import base64
         import io
         from PIL import Image
         import numpy as np
 
+        logger.info("Decoding base64...")
         image_data = base64.b64decode(payload["image_base64"])
+
+        # Clear payload from memory immediately if possible (though flask keeps request.json cached)
+        del payload
+
+        logger.info("Opening image...")
         image = Image.open(io.BytesIO(image_data)).convert("RGB")
 
+        # Free raw bytes
+        del image_data
+        gc.collect()
+
         # Resize to model's expected input size (160x160 for this model)
+        logger.info("Resizing image...")
         image = image.resize((160, 160))
         image_array = np.array(image) / 255.0
         image_array = np.expand_dims(image_array, axis=0)
 
+        # Free PIL image
+        del image
+        gc.collect()
+
         # Predict
+        logger.info("🔮 Running model prediction...")
         prediction = model.predict(image_array)
 
+        # Free input array
+        del image_array
+        gc.collect()
+
+        logger.info("✅ Prediction complete!")
+
         # Convert prediction to readable format
-        # This part depends heavily on the specific model's output classes.
-        # Check if model has a mapping, otherwise return raw probabilities or index.
-        # For now, returning the raw prediction list.
         prediction_list = prediction.tolist()
 
         return jsonify({
@@ -129,6 +154,9 @@ def predict():
     except Exception as e:
         logger.error(f"❌ Prediction error: {e}")
         return jsonify({"error": str(e)}), 500
+    finally:
+        import gc
+        gc.collect()
 
 @app.route("/", methods=["GET"])
 def health_check():
