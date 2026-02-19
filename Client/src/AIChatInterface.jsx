@@ -1,24 +1,24 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import {
-    FiActivity,
-    FiAlertCircle,
-    FiCheck,
-    FiCopy,
-    FiEdit,
-    FiFileText,
-    FiImage,
-    FiLogOut,
-    FiMenu,
-    FiMessageSquare,
-    FiMic,
-    FiPause,
-    FiPlay,
-    FiPlus,
-    FiSend,
-    FiUpload,
-    FiUser,
-    FiX,
+  FiActivity,
+  FiAlertCircle,
+  FiCheck,
+  FiCopy,
+  FiEdit,
+  FiFileText,
+  FiImage,
+  FiLogOut,
+  FiMenu,
+  FiMessageSquare,
+  FiMic,
+  FiPause,
+  FiPlay,
+  FiPlus,
+  FiSend,
+  FiUpload,
+  FiUser,
+  FiX,
 } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
 import Logo from "./assets/Logo.webp";
@@ -453,15 +453,75 @@ const AIChatInterface = () => {
     setIsTyping(true);
     setIsDeepThinking(true);
 
+    // Helper to resize image before upload
+    const resizeImage = (file) => {
+        return new Promise((resolve, reject) => {
+            // Only resize images
+            if (!file.type.startsWith('image/')) {
+                return resolve(file);
+            }
+
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const maxWidth = 800; // Max width for X-ray/Lab
+                    const maxHeight = 800;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > maxWidth) {
+                            height *= maxWidth / width;
+                            width = maxWidth;
+                        }
+                    } else {
+                        if (height > maxHeight) {
+                            width *= maxHeight / height;
+                            height = maxHeight;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob((blob) => {
+                        const resizedFile = new File([blob], file.name, {
+                            type: file.type,
+                            lastModified: Date.now(),
+                        });
+                        resolve(resizedFile);
+                    }, file.type, 0.8); // 0.8 quality
+                };
+                img.onerror = (error) => reject(error);
+            };
+            reader.onerror = (error) => reject(error);
+        });
+    };
+
     try {
       if (!file) {
         throw new Error("No file selected");
       }
 
+      // Resize image if it's an X-ray or image-based lab report
+      // This is CRITICAL for preventing Server/Microservice OOM crashes
+      let fileToUpload = file;
+      if (type === "X-Ray" || type === "xray" || file.type.startsWith("image/")) {
+          console.log("🖼️ Resizing image before upload...");
+          fileToUpload = await resizeImage(file);
+          console.log("✅ Resize complete. New size:", fileToUpload.size);
+      }
+
       const normalizedType = type.replace(/[^a-zA-Z]/g, "").toLowerCase();
 
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileToUpload);
       formData.append("type", normalizedType);
       formData.append("language", "english");
 
