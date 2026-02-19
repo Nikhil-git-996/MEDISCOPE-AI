@@ -3,7 +3,7 @@ const isProduction = import.meta.env.PROD;
 
 // Use localhost for development, Render URL for production
 const API_BASE_URL = isProduction
-    ? "https://mediscope-2-server.onrender.com"
+    ? "https://mediscope-ai-server.onrender.com"
     : "http://localhost:4000";
 
 export const getApiUrl = (endpoint) => {

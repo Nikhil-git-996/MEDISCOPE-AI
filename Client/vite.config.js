@@ -6,19 +6,19 @@ export default defineConfig({
   server: {
     proxy: {
       '/signup': {
-        target: 'https://mediscope-2-server.onrender.com',
+        target: 'https://mediscope-ai-server.onrender.com',
         changeOrigin: true,
       },
       '/login': {
-        target: 'https://mediscope-2-server.onrender.com',
+        target: 'https://mediscope-ai-server.onrender.com',
         changeOrigin: true,
       },
       '/process': {
-        target: 'https://mediscope-2-server.onrender.com',
+        target: 'https://mediscope-ai-server.onrender.com',
         changeOrigin: true,
       },
       '/api': {
-        target: 'https://mediscope-2-server.onrender.com',
+        target: 'https://mediscope-ai-server.onrender.com',
         changeOrigin: true,
       },
     },
