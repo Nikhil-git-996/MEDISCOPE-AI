@@ -97,8 +97,9 @@ const AIChatInterface = () => {
       newSocket = io(SOCKET_URL, {
         transports: ["websocket", "polling"],
         withCredentials: true,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10,
         reconnectionDelay: 1000,
+        timeout: 20000,
       });
 
       newSocket.on("connect", () => {

@@ -19,7 +19,12 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 // -----------------------------
 // CORS + JSON PARSER
@@ -43,7 +48,13 @@ app.use((req, res, next) => {
 // -----------------------------
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected"))
+  .then(() => {
+      console.log("✅ MongoDB Connected");
+      console.log("🔍 Env Var Check:");
+      console.log("   - XRAY_URL:", process.env.XRAY_URL ? "Set" : "MISSING");
+      console.log("   - LAB_URL:", process.env.LAB_URL ? "Set" : "MISSING");
+      console.log("   - INTERPRETER_URL:", process.env.INTERPRETER_URL ? "Set" : "MISSING");
+  })
   .catch((err) => console.error("❌ Mongo Error:", err.message));
 
 // -----------------------------
@@ -214,6 +225,19 @@ app.post(
     const requestId = `REQ-${Date.now()}`;
     const userId = req.user.id;
 
+    // Validate Env Vars
+    const XRAY_URL = process.env.XRAY_URL;
+    const LAB_URL = process.env.LAB_URL;
+
+    if (type === "xray" && !XRAY_URL) {
+        console.error("❌ XRAY_URL is not set in environment variables!");
+        return res.status(500).json({ error: "Server misconfiguration: XRAY_URL missing" });
+    }
+    if ((type === "lab" || type === "labreport") && !LAB_URL) {
+         console.error("❌ LAB_URL is not set in environment variables!");
+         return res.status(500).json({ error: "Server misconfiguration: LAB_URL missing" });
+    }
+
     console.log(`🟢 Starting request ${requestId} for user ${userId}`);
 
     try {
@@ -345,7 +369,10 @@ app.post(
 
       } catch (err) {
         console.error("❌ [PROCESS ERROR]:", err.message);
-        io.emit("failed", { userId, requestId, error: err.message });
+        if (err.config && err.config.url) {
+            console.error("❌ Failed URL:", err.config.url);
+        }
+        io.emit("failed", { userId, requestId, error: "Microservice error: " + err.message });
 
         // Create failed history record if possible
          try {
